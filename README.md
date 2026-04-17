@@ -375,8 +375,13 @@ The test program verifies:
 - Integrity checking (detects corrupted objects)
 
 **📸 Screenshot 1A:** Output of `./test_objects` showing all tests passing.
+<img width="940" height="452" alt="image" src="https://github.com/user-attachments/assets/4e6dddef-c779-4550-8864-819c41080116" />
+
 
 **📸 Screenshot 1B:** `find .pes/objects -type f` showing the sharded directory structure.
+<img width="940" height="102" alt="image" src="https://github.com/user-attachments/assets/394b988e-7cae-4589-b8a7-2aac5526ebe9" />
+
+
 
 ---
 
@@ -407,8 +412,12 @@ The test program verifies:
 - Deterministic serialization (same entries in any order → identical output)
 
 **📸 Screenshot 2A:** Output of `./test_tree` showing all tests passing.
+<img width="940" height="591" alt="image" src="https://github.com/user-attachments/assets/e83d3927-d8e3-4b15-990f-03609df670fd" />
+
 
 **📸 Screenshot 2B:** Pick a tree object from `find .pes/objects -type f` and run `xxd .pes/objects/XX/YYY... | head -20` to show the raw binary format.
+<img width="940" height="413" alt="image" src="https://github.com/user-attachments/assets/d294bdf3-63b3-4593-8c0a-a15fa326d854" />
+
 
 ---
 
@@ -465,10 +474,15 @@ cat .pes/index    # Human-readable text format
 ```
 
 **📸 Screenshot 3A:** Run `./pes init`, `./pes add file1.txt file2.txt`, `./pes status` — show the output.
+<img width="821" height="25" alt="image" src="https://github.com/user-attachments/assets/87915b86-5738-4229-b122-9a87fd78e053" />
+
 
 **📸 Screenshot 3B:** `cat .pes/index` showing the text-format index with your entries.
 
 ---
+<img width="875" height="1048" alt="image" src="https://github.com/user-attachments/assets/0a41d7ca-e6e4-4181-8e4f-b73c833c1020" />
+<img width="940" height="59" alt="image" src="https://github.com/user-attachments/assets/3d5e5e9e-d5a9-4d81-a6c1-e921033af372" />
+
 
 ## Phase 4: Commits and History
 
@@ -516,10 +530,18 @@ make test-integration
 ```
 
 **📸 Screenshot 4A:** Output of `./pes log` showing three commits with hashes, authors, timestamps, and messages.
+<img width="940" height="335" alt="image" src="https://github.com/user-attachments/assets/8fa6c1b2-ecbb-41e1-9ea8-dd7aabcb358a" />
+
 
 **📸 Screenshot 4B:** `find .pes -type f | sort` showing object store growth after three commits.
+<img width="916" height="39" alt="image" src="https://github.com/user-attachments/assets/2172ea68-d723-4c32-b54f-48666c02a6d3" />
+<img width="921" height="196" alt="image" src="https://github.com/user-attachments/assets/63cbddd9-4b12-43c2-82be-7998c7e27388" />
+
 
 **📸 Screenshot 4C:** `cat .pes/refs/heads/main` and `cat .pes/HEAD` showing the reference chain.
+<img width="825" height="26" alt="image" src="https://github.com/user-attachments/assets/ac2cc873-cc82-48f9-a982-3b41c1664e2a" />
+<img width="940" height="65" alt="image" src="https://github.com/user-attachments/assets/258c76fd-e2c0-4cc3-8494-e467bb401553" />
+
 
 ---
 
@@ -530,16 +552,102 @@ The following questions cover filesystem concepts beyond the implementation scop
 ### Branching and Checkout
 
 **Q5.1:** A branch in Git is just a file in `.git/refs/heads/` containing a commit hash. Creating a branch is creating a file. Given this, how would you implement `pes checkout <branch>` — what files need to change in `.pes/`, and what must happen to the working directory? What makes this operation complex?
+Q5.1
+Question:
 
+A branch in Git is just a file in .git/refs/heads/ containing a commit hash. Creating a branch is creating a file. Given this, how would you implement pes checkout <branch> — what files need to change in .pes/, and what must happen to the working directory? What makes this operation complex?
+ Answer:
+
+To implement pes checkout <branch>:
+
+1. Update .pes/HEAD
+
+Change HEAD to point to the selected branch:
+
+ref: refs/heads/<branch>
+The branch file .pes/refs/heads/<branch> contains the commit hash of the latest commit in that branch.
+
+After updating HEAD, the working directory must be updated to match the snapshot of the target commit. This is done by:
+
+Reading the commit object
+Extracting the tree object
+Reconstructing all files from the tree into the working directory
+Overwriting existing files if needed
+
+The index may also need to be updated to match the checked-out state.
+
+This operation is complex because it must ensure that no uncommitted changes are lost, and it must maintain consistency between HEAD, index, working directory, and object store.
 **Q5.2:** When switching branches, the working directory must be updated to match the target branch's tree. If the user has uncommitted changes to a tracked file, and that file differs between branches, checkout must refuse. Describe how you would detect this "dirty working directory" conflict using only the index and the object store.
+To detect a dirty working directory, the system compares the working directory, index, and object store.
+
+First, for each tracked file, compute the hash of the file in the working directory and compare it with the hash stored in the index. If they differ, the file has uncommitted changes.
+
+Next, load the target branch’s latest commit from the object store, extract its tree, and compare file hashes with the index.
+
+A dirty state exists if:
+
+Working directory differs from index, or
+Index differs from target commit tree, or
+File is missing in one state but present in another
+
+If any such conflict exists, checkout must be aborted to prevent data loss.
 
 **Q5.3:** "Detached HEAD" means HEAD contains a commit hash directly instead of a branch reference. What happens if you make commits in this state? How could a user recover those commits?
+Answer:
+In detached HEAD state, HEAD points directly to a commit instead of a branch reference.
 
+When a user makes commits in this state, new commits are created normally, but they are not attached to any branch. This means the commits are not reachable through any branch pointer and may become orphaned if the user switches branches.
+
+To recover these commits, the user can:
+
+Create a new branch pointing to the commit using pes checkout -b <branch>
+Manually update a branch reference in .pes/refs/heads/
+Checkout the commit hash and create a new branch from it
+
+Detached HEAD commits are not lost; they only become unreachable unless explicitly referenced.
 ### Garbage Collection and Space Reclamation
 
 **Q6.1:** Over time, the object store accumulates unreachable objects — blobs, trees, or commits that no branch points to (directly or transitively). Describe an algorithm to find and delete these objects. What data structure would you use to track "reachable" hashes efficiently? For a repository with 100,000 commits and 50 branches, estimate how many objects you'd need to visit.
+Answer:
+To remove unreachable objects, we use a mark-and-sweep garbage collection algorithm.
+
+Step 1: Mark phase (find reachable objects)
+Start from all branch tips in .pes/refs/heads/*
+Also include HEAD reference
+Perform a graph traversal (DFS or BFS)
+
+For each commit:
+
+Mark commit as reachable
+Extract its tree
+Mark all tree objects
+Recursively mark all blob objects referenced by the tree
+Move to parent commit and repeat
+Data structure used:
+
+A hash set (visited set) is used to store reachable object IDs efficiently. This allows O(1) lookup to avoid revisiting objects.
 
 **Q6.2:** Why is it dangerous to run garbage collection concurrently with a commit operation? Describe a race condition where GC could delete an object that a concurrent commit is about to reference. How does Git's real GC avoid this?
+Answer:
+Running garbage collection (GC) concurrently with a commit is dangerous because GC may delete objects that are in the process of being created or referenced by a commit.
+
+Race condition scenario:
+A commit is being created
+It writes a blob/tree object to the object store
+GC starts at the same time
+GC scans reachable objects before the commit updates branch pointers
+The new object is not yet reachable from any branch or HEAD
+GC incorrectly marks it as unreachable and deletes it
+Commit later tries to reference the deleted object → corruption or failure
+How Git avoids this problem:
+
+Git prevents this using:
+
+atomic writes (write object fully before linking it)
+packfile locking
+.lock files during updates
+reachability protection window (objects are only GC-safe after being referenced by a ref)
+GC only runs when repository is in a consistent state
 
 ---
 
